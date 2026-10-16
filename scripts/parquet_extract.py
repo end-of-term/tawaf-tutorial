@@ -39,11 +39,14 @@ from cdx_lookup import warc_location
 
 EOT_WARCS = "https://eotarchive.s3.amazonaws.com/"
 
+# The file name is written into the query, rather than passed as a parameter
+# like the other values, so DuckDB can plan the query knowing the file
+# (more than twice as fast).
 QUERY = """
     SELECT url, strftime(fetch_time, '%Y%m%d%H%M%S') AS timestamp,
            content_mime_type, content_digest,
            warc_filename, warc_record_offset, warc_record_length
-    FROM read_parquet($parquet)
+    FROM read_parquet('{parquet}')
     WHERE url_host_registered_domain = $domain
       AND content_mime_detected = $mime
       AND fetch_status = 200
@@ -52,8 +55,9 @@ QUERY = """
 
 
 def main(parquet, domain, mime, out_dir, limit=10):
-    params = {"parquet": parquet, "domain": domain, "mime": mime, "limit": int(limit)}
-    rows = duckdb.execute(QUERY, params).fetchall()
+    query = QUERY.format(parquet=parquet.replace("'", "''"))
+    params = {"domain": domain, "mime": mime, "limit": int(limit)}
+    rows = duckdb.execute(query, params).fetchall()
     print(f"Found {len(rows)} capture(s)", file=sys.stderr)
 
     os.makedirs(out_dir, exist_ok=True)
